@@ -47,6 +47,7 @@ azkaban.urlPrefix=https://your-azkaban-url
 + alertOnError
 + alertOnSuccess
 + alertOnSla
+
 以上都可以正常触发，alertOnFailedUpdate这个不知道怎么触发，我以为时运行flow时关闭executor，但似乎不行。
 
 ## 升级部署
