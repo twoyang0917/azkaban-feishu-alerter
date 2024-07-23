@@ -24,10 +24,14 @@ import org.apache.commons.lang.exception.ExceptionUtils;
 
 public class FeishuAlerter implements Alerter {
     private static final Logger logger = Logger.getLogger(FeishuAlerter.class);
+    private boolean enabled;
+    private boolean alertSuccess;
     private String webhookUrl;
     private String urlPrefix;
 
     public FeishuAlerter(Props props) {
+        this.enabled = props.getBoolean("feishu.enabled", true);
+        this.alertSuccess = props.getBoolean("feishu.alertSuccess", false);
         this.webhookUrl = props.get("feishu.webhookUrl");
         this.urlPrefix = props.get("azkaban.urlPrefix");
 
@@ -112,6 +116,11 @@ public class FeishuAlerter implements Alerter {
 
     @Override
     public void alertOnSuccess(ExecutableFlow executableFlow) throws Exception {
+        if (!this.enabled || !this.alertSuccess) {
+            logger.info("alertOnSuccess disabled");
+            return;
+        }
+
         logger.debug("alertOnSuccess");
         String title = String.format("Execution %s has succeeded", executableFlow.getExecutionId());
         String link = String.format("%s/executor?execid=%s", this.urlPrefix, executableFlow.getExecutionId());
@@ -139,6 +148,10 @@ public class FeishuAlerter implements Alerter {
 
     @Override
     public void alertOnError(ExecutableFlow executableFlow, String... extraReasons) {
+        if (!this.enabled) {
+            logger.info("alertOnError disabled");
+            return;
+        }
         logger.debug("alertOnError");
         String title = String.format("Execution %s has failed", executableFlow.getExecutionId());
         String link = String.format("%s/executor?execid=%s", this.urlPrefix, executableFlow.getExecutionId());
@@ -168,6 +181,10 @@ public class FeishuAlerter implements Alerter {
 
     @Override
     public void alertOnFirstError(ExecutableFlow executableFlow) throws Exception {
+        if (!this.enabled) {
+            logger.info("alertOnFirstError disabled");
+            return;
+        }
         logger.debug("alertOnFirstError");
         String title = String.format("Execution %s has encountered a failure", executableFlow.getExecutionId());
         String link = String.format("%s/executor?execid=%s", this.urlPrefix, executableFlow.getExecutionId());
@@ -203,6 +220,10 @@ public class FeishuAlerter implements Alerter {
 
     @Override
     public void alertOnSla(SlaOption slaOption, String slaMessage) throws Exception {
+        if (!this.enabled) {
+            logger.info("alertOnSla disabled");
+            return;
+        }
         logger.debug("alertOnSla");
         String title = String.format("SLA violation for %s", getJobOrFlowName(slaOption));
         String message = renderMessage(title, slaMessage);
@@ -211,6 +232,10 @@ public class FeishuAlerter implements Alerter {
 
     @Override
     public void alertOnFailedUpdate(Executor executor, List<ExecutableFlow> flows, ExecutorManagerException updateException) {
+        if (!this.enabled) {
+            logger.info("alertOnFailedUpdate disabled");
+            return;
+        }
         logger.debug("alertOnFailedUpdate");
         String link = String.format("%s/status", this.urlPrefix);
         String title = String.format("Executor %s might have lost connection", executor.getHost());

@@ -27,6 +27,10 @@ $ vim conf/plugin.properties
 alerter.name=azkaban-feishu-alerter
 alerter.class=com.github.twoyang0917.FeishuAlerter
 
+# 是否禁用飞书告警，比如测试集群就不需要告警
+feishu.enabled=true
+# 成功是否发送飞书告警，正常情况下成功是不需要的
+feishu.alertSuccess=false
 # 飞书机器人的 Webhook URL
 feishu.webhookUrl=https://open.feishu.cn/open-apis/bot/v2/hook/******
 # 告警信息中的链接地址前缀
