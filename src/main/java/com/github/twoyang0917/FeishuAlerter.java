@@ -9,6 +9,8 @@ import azkaban.utils.Props;
 import azkaban.utils.TimeUtils;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -26,16 +28,37 @@ public class FeishuAlerter implements Alerter {
     private static final Logger logger = Logger.getLogger(FeishuAlerter.class);
     private boolean enabled;
     private boolean alertSuccess;
-    private String webhookUrl;
+    private String defaultWebhookUrl;
     private String urlPrefix;
+
+    private Map<String, AlerterRule> rules = new HashMap<>();
 
     public FeishuAlerter(Props props) {
         this.enabled = props.getBoolean("feishu.enabled", true);
         this.alertSuccess = props.getBoolean("feishu.alertSuccess", false);
-        this.webhookUrl = props.get("feishu.webhookUrl");
+        this.defaultWebhookUrl = props.get("feishu.defaultWebhookUrl");
         this.urlPrefix = props.get("azkaban.urlPrefix");
-
+        loadRules(props);
         logger.info("FeishuAlerter initialized");
+    }
+
+    public void loadRules(Props props) {
+        List<String> ruleNames = props.getStringList("rule.names");
+        if (ruleNames.isEmpty()) {
+            logger.info("No rules defined");
+        } else {
+            for (String ruleName : ruleNames) {
+                try {
+                    String regex = props.getString("rule." + ruleName + ".regex");
+                    String webhookUrl = props.getString("rule." + ruleName + ".webhookUrl");
+                    AlerterRule rule = new AlerterRule(regex, webhookUrl);
+                    this.rules.put(ruleName, rule);
+                    logger.info("Added rule " + ruleName + " regex " + regex + " webhookUrl " + webhookUrl);
+                } catch (Exception e) {
+                    logger.error("Error loading rule " + ruleName + " " + e.getMessage());
+                }
+            }
+        }
     }
 
     private String renderMessage(String title, String content, String color) {
@@ -90,12 +113,12 @@ public class FeishuAlerter implements Alerter {
         return renderMessage(title, content, "red");
     }
 
-    private void sendMesage(String message)  {
+    private void sendMessage(String message, String webhookUrl)  {
         logger.debug("AlertMessage:" + message);
         OkHttpClient client = new OkHttpClient();
         RequestBody body = RequestBody.create(MediaType.parse("application/json"), message);
         Request request = new Request.Builder()
-                .url(this.webhookUrl)
+                .url(webhookUrl)
                 .post(body)
                 .addHeader("Content-Type", "application/json")
                 .build();
@@ -112,6 +135,20 @@ public class FeishuAlerter implements Alerter {
         } catch (Exception e) {
             logger.trace(e);
         }
+    }
+
+    private void sendMessage(String message) {
+        // Send message to default webhook url
+        sendMessage(message, this.defaultWebhookUrl);
+    }
+
+    private String getWebhookUrl(String projectName) {
+        for (AlerterRule rule : this.rules.values()) {
+            if (rule.matches(projectName)) {
+                return rule.getWebhookUrl();
+            }
+        }
+        return this.defaultWebhookUrl;
     }
 
     @Override
@@ -143,7 +180,7 @@ public class FeishuAlerter implements Alerter {
         );
 
         String message = renderMessage(title, content, "green");
-        sendMesage(message);
+        sendMessage(message, getWebhookUrl(executableFlow.getProjectName()));
     }
 
     @Override
@@ -176,7 +213,7 @@ public class FeishuAlerter implements Alerter {
         );
 
         String message = renderMessage(title, content);
-        sendMesage(message);
+        sendMessage(message, getWebhookUrl(executableFlow.getProjectName()));
     }
 
     @Override
@@ -207,7 +244,7 @@ public class FeishuAlerter implements Alerter {
         );
 
         String message = renderMessage(title, content);
-        sendMesage(message);
+        sendMessage(message, getWebhookUrl(executableFlow.getProjectName()));
     }
 
     private String getJobOrFlowName(final SlaOption slaOption) {
@@ -227,7 +264,7 @@ public class FeishuAlerter implements Alerter {
         logger.debug("alertOnSla");
         String title = String.format("SLA violation for %s", getJobOrFlowName(slaOption));
         String message = renderMessage(title, slaMessage);
-        sendMesage(message);
+        sendMessage(message);
     }
 
     @Override
@@ -249,6 +286,6 @@ public class FeishuAlerter implements Alerter {
                 ExceptionUtils.getStackTrace(updateException)
         );
         String message = renderMessage(title, content);
-        sendMesage(message);
+        sendMessage(message);
     }
 }

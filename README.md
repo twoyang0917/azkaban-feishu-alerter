@@ -32,7 +32,15 @@ feishu.enabled=true
 # 成功是否发送飞书告警，正常情况下成功是不需要的
 feishu.alertSuccess=false
 # 飞书机器人的 Webhook URL
-feishu.webhookUrl=https://open.feishu.cn/open-apis/bot/v2/hook/******
+feishu.defaultWebhookUrl=https://open.feishu.cn/open-apis/bot/v2/hook/******
+# 告警规则名称，多个规则用逗号隔开，根据projectName匹配正则表达式，发送告警到对应的webhook地址，如果所有规则都不匹配则使用默认的webhook地址
+rule.names=ai,das
+# 告警规则对应正则表达式
+rule.ai.regex=.*[-_]ai[-_].*
+# 告警规则对应的webhook地址
+rule.ai.webhookUrl=https://open.feishu.cn/open-apis/bot/v2/hook/******
+rule.das.regex=^DAS_.*
+rule.das.webhookUrl=https://open.feishu.cn/open-apis/bot/v2/hook/******
 # 告警信息中的链接地址前缀
 azkaban.urlPrefix=https://your-azkaban-url
 ```
