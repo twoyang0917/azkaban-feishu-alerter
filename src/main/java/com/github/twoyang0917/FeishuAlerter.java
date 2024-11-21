@@ -8,9 +8,7 @@ import azkaban.sla.SlaOption;
 import azkaban.utils.Props;
 import azkaban.utils.TimeUtils;
 
-import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -29,33 +27,61 @@ public class FeishuAlerter implements Alerter {
     private boolean enabled;
     private boolean alertSuccess;
     private String defaultWebhookUrl;
+    private List<String> defaultNotifyPersons;
     private String urlPrefix;
 
-    private Map<String, AlerterRule> rules = new HashMap<>();
+    private ArrayList<WebhookRule> webhookRules = new ArrayList<>();
+    private ArrayList<NotifyRule> notifyRules = new ArrayList<>();
 
     public FeishuAlerter(Props props) {
+        logger.info("properties file path: " + props.getSource());
         this.enabled = props.getBoolean("feishu.enabled", true);
         this.alertSuccess = props.getBoolean("feishu.alertSuccess", false);
         this.defaultWebhookUrl = props.get("feishu.defaultWebhookUrl");
+        this.defaultNotifyPersons = props.getStringList("feishu.defaultNotifyPersons");
         this.urlPrefix = props.get("azkaban.urlPrefix");
+        logger.info("enabled: " + this.enabled);
+        logger.info("alertSuccess: " + this.alertSuccess);
+        logger.info("defaultWebhookUrl: " + this.defaultWebhookUrl);
+        logger.info("defaultNotifyPersons: " + this.defaultNotifyPersons);
+        logger.info("urlPrefix: " + this.urlPrefix);
         loadRules(props);
-        logger.info("FeishuAlerter initialized");
+        logger.info("initialized");
     }
 
-    public void loadRules(Props props) {
-        List<String> ruleNames = props.getStringList("rule.names");
-        if (ruleNames.isEmpty()) {
-            logger.info("No rules defined");
+    private void loadRules(Props props) {
+        // WebhookRule
+        List<String> webhookRuleNames = props.getStringList("rule.webhook.name");
+        if (webhookRuleNames.isEmpty()) {
+            logger.info("No webhook rules defined");
         } else {
-            for (String ruleName : ruleNames) {
+            for (String webhookRuleName : webhookRuleNames) {
                 try {
-                    String regex = props.getString("rule." + ruleName + ".regex");
-                    String webhookUrl = props.getString("rule." + ruleName + ".webhookUrl");
-                    AlerterRule rule = new AlerterRule(regex, webhookUrl);
-                    this.rules.put(ruleName, rule);
-                    logger.info("Added rule " + ruleName + " regex " + regex + " webhookUrl " + webhookUrl);
+                    String regex = props.getString("rule.webhook." + webhookRuleName + ".regex");
+                    String url = props.getString("rule.webhook." + webhookRuleName + ".url");
+                    WebhookRule webhook = new WebhookRule(regex, url);
+                    this.webhookRules.add(webhook);
+                    logger.info("Added webhook rule " + webhookRuleName + ": " +webhook.toString());
                 } catch (Exception e) {
-                    logger.error("Error loading rule " + ruleName + " " + e.getMessage());
+                    logger.error("Error loading webhook rule " + webhookRuleName + " " + e.getMessage());
+                }
+            }
+        }
+
+        // NotifyRule
+        List<String> notifyRuleNames = props.getStringList("rule.notify.name");
+        if (notifyRuleNames.isEmpty()) {
+            logger.info("No notify rules defined");
+        } else {
+            for (String notifyRuleName : notifyRuleNames) {
+                try {
+                    String regex = props.getString("rule.notify." + notifyRuleName + ".regex");
+                    List<String> persons = props.getStringList("rule.notify." + notifyRuleName + ".persons");
+                    NotifyRule notify = new NotifyRule(regex, persons);
+                    this.notifyRules.add(notify);
+                    logger.info("Added notify rule " + notifyRuleName + ": " + notify.toString());
+                } catch (Exception e) {
+                    logger.error("Error loading notify rule " + notifyRuleName + " " + e.getMessage());
                 }
             }
         }
@@ -68,11 +94,8 @@ public class FeishuAlerter implements Alerter {
               "card": {
                 "elements": [
                   {
-                    "tag": "div",
-                    "text": {
-                      "content": "内容",
-                      "tag": "lark_md"
-                    }
+                    "tag": "markdown",
+                    "content": "内容"
                   }
                 ],
                 "header": {
@@ -87,48 +110,51 @@ public class FeishuAlerter implements Alerter {
             }
         */
         // https://jsontostring.com/
-        String jsonTemplate = "{\"msg_type\":\"interactive\",\"card\":{\"elements\":[{\"tag\":\"div\",\"text\":{\"content\":\"内容\",\"tag\":\"lark_md\"}}],\"header\":{\"template\":\"red\",\"title\":{\"content\":\"标题\",\"tag\":\"plain_text\"}},\"config\":{\"wide_screen_mode\":true}}}";
+        String jsonTemplate = "{\"msg_type\":\"interactive\",\"card\":{\"elements\":[{\"tag\":\"markdown\",\"content\":\"内容\"}],\"header\":{\"template\":\"red\",\"title\":{\"content\":\"标题\",\"tag\":\"plain_text\"}},\"config\":{\"wide_screen_mode\":true}}}";
         // Parse JSON template into JsonObject using Gson
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         JsonObject jsonObject = gson.fromJson(jsonTemplate, JsonObject.class);
+        try {
+            // Modify content in header based on your dynamic needs
+            jsonObject.getAsJsonObject("card")
+                    .getAsJsonObject("header")
+                    .addProperty("template", color);
+            jsonObject.getAsJsonObject("card")
+                    .getAsJsonObject("header")
+                    .getAsJsonObject("title")
+                    .addProperty("content", title);
+            jsonObject.getAsJsonObject("card")
+                    .getAsJsonArray("elements")
+                    .get(0).getAsJsonObject()
+                    .addProperty("content", content);
 
-        // Modify content in header based on your dynamic needs
-        jsonObject.getAsJsonObject("card")
-                .getAsJsonObject("header")
-                .addProperty("template", color);
-        jsonObject.getAsJsonObject("card")
-                .getAsJsonObject("header")
-                .getAsJsonObject("title")
-                .addProperty("content", title);
-        jsonObject.getAsJsonObject("card")
-                .getAsJsonArray("elements")
-                .get(0).getAsJsonObject()
-                .getAsJsonObject("text")
-                .addProperty("content", content);
-
-        return gson.toJson(jsonObject);
+            return gson.toJson(jsonObject);
+        } catch (Exception e) {
+            logger.error("Error rendering message: " + e.getMessage());
+            // Return an empty string in case of error
+            return gson.toJson(new JsonObject());
+        }
     }
 
     private String renderMessage(String title, String content) {
         return renderMessage(title, content, "red");
     }
 
-    private void sendMessage(String message, String webhookUrl)  {
-        logger.debug("AlertMessage:" + message);
+    private void sendMessage(String message, String url)  {
+        logger.debug("message:" + message);
         OkHttpClient client = new OkHttpClient();
         RequestBody body = RequestBody.create(MediaType.parse("application/json"), message);
         Request request = new Request.Builder()
-                .url(webhookUrl)
+                .url(url)
                 .post(body)
                 .addHeader("Content-Type", "application/json")
                 .build();
         try {
             Response response = client.newCall(request).execute();
             if (response.isSuccessful()) {
-                logger.info("Request successfully sent!");
-                logger.info(response.body().string());
+                logger.debug("Request successfully sent!");
+                logger.debug(response.body().string());
             } else {
-                logger.error("Request failed!");
                 logger.error("Response code: " + response.code());
                 logger.error(response.body().string());
             }
@@ -142,13 +168,65 @@ public class FeishuAlerter implements Alerter {
         sendMessage(message, this.defaultWebhookUrl);
     }
 
-    private String getWebhookUrl(String projectName) {
-        for (AlerterRule rule : this.rules.values()) {
+    private String getUrl(String projectName) {
+        for (WebhookRule rule : this.webhookRules) {
             if (rule.matches(projectName)) {
-                return rule.getWebhookUrl();
+                logger.debug("Matched webhook rule: " + rule.toString() + " for project: " + projectName);
+                return rule.url;
             }
         }
+        logger.info("No matched webhook rule for project: " + projectName + ", using default webhook url: " + this.defaultWebhookUrl);
         return this.defaultWebhookUrl;
+    }
+
+    private List<String> getPersons(String projectName) {
+        for (NotifyRule rule : this.notifyRules) {
+            if (rule.matches(projectName)) {
+                logger.debug("Matched notify rule: " + rule.toString() + " for project: " + projectName);
+                return rule.persons;
+            }
+        }
+        logger.info("No matched notify rule for project: " + projectName + ", using default notify persons: " + this.defaultNotifyPersons);
+        return this.defaultNotifyPersons;
+    }
+    private String renderContent(ExecutableFlow executableFlow) {
+        return renderContent(executableFlow, null);
+    }
+
+    private String renderContent(ExecutableFlow executableFlow, SlaOption slaOption) {
+        String link = String.format("%s/executor?execid=%s", this.urlPrefix, executableFlow.getExecutionId());
+        StringBuilder content = new StringBuilder(String.format("[%s](%s)\n" +
+                        "projectName: %s\n" +
+                        "flowId: %s\n" +
+                        "executionId: %s\n" +
+                        "startTime: %s\n" +
+                        "endTime: %s\n" +
+                        "duration: %s\n" +
+                        "status: %s\n\n",
+                link, link,
+                executableFlow.getProjectName(),
+                executableFlow.getFlowId(),
+                executableFlow.getExecutionId(),
+                TimeUtils.formatDateTimeZone(executableFlow.getStartTime()),
+                TimeUtils.formatDateTimeZone(executableFlow.getEndTime()),
+                TimeUtils.formatDuration(executableFlow.getStartTime(), executableFlow.getEndTime()),
+                executableFlow.getStatus()
+        ));
+
+        // Add SLA message
+        if (slaOption != null) {
+            content.append(String.format("%s\n\n", slaOption.createSlaMessage(executableFlow)));
+        }
+
+        // Add persons
+        List<String> persons = getPersons(executableFlow.getProjectName());
+        if (!persons.isEmpty()) {
+            for (String person : persons) {
+                content.append(String.format("<at email=%s></at>\t", person));
+            }
+        }
+        logger.debug(content.toString());
+        return content.toString();
     }
 
     @Override
@@ -160,27 +238,9 @@ public class FeishuAlerter implements Alerter {
 
         logger.debug("alertOnSuccess");
         String title = String.format("Execution %s has succeeded", executableFlow.getExecutionId());
-        String link = String.format("%s/executor?execid=%s", this.urlPrefix, executableFlow.getExecutionId());
-        String content = String.format("[%s](%s)\n" +
-                                    "projectName: %s\n" +
-                                    "flowId: %s\n" +
-                                    "executionId: %s\n" +
-                                    "startTime: %s\n" +
-                                    "endTime: %s\n" +
-                                    "duration: %s\n" +
-                                    "status: %s\n\n",
-                link, link,
-                executableFlow.getProjectName(),
-                executableFlow.getFlowId(),
-                executableFlow.getExecutionId(),
-                TimeUtils.formatDateTimeZone(executableFlow.getStartTime()),
-                TimeUtils.formatDateTimeZone(executableFlow.getEndTime()),
-                TimeUtils.formatDuration(executableFlow.getStartTime(), executableFlow.getEndTime()),
-                executableFlow.getStatus()
-        );
-
+        String content = renderContent(executableFlow);
         String message = renderMessage(title, content, "green");
-        sendMessage(message, getWebhookUrl(executableFlow.getProjectName()));
+        sendMessage(message, getUrl(executableFlow.getProjectName()));
     }
 
     @Override
@@ -191,29 +251,9 @@ public class FeishuAlerter implements Alerter {
         }
         logger.debug("alertOnError");
         String title = String.format("Execution %s has failed", executableFlow.getExecutionId());
-        String link = String.format("%s/executor?execid=%s", this.urlPrefix, executableFlow.getExecutionId());
-        String content = String.format("[%s](%s)\n" +
-                                    "projectName: %s\n" +
-                                    "flowId: %s\n" +
-                                    "executionId: %s\n" +
-                                    "startTime: %s\n" +
-                                    "endTime: %s\n" +
-                                    "duration: %s\n" +
-                                    "status: %s\n\n" +
-                                    "extraReasons: %s\n",
-                link, link,
-                executableFlow.getProjectName(),
-                executableFlow.getFlowId(),
-                executableFlow.getExecutionId(),
-                TimeUtils.formatDateTimeZone(executableFlow.getStartTime()),
-                TimeUtils.formatDateTimeZone(executableFlow.getEndTime()),
-                TimeUtils.formatDuration(executableFlow.getStartTime(), executableFlow.getEndTime()),
-                executableFlow.getStatus(),
-                String.join("\n", extraReasons)
-        );
-
+        String content = renderContent(executableFlow);
         String message = renderMessage(title, content);
-        sendMessage(message, getWebhookUrl(executableFlow.getProjectName()));
+        sendMessage(message, getUrl(executableFlow.getProjectName()));
     }
 
     @Override
@@ -224,27 +264,9 @@ public class FeishuAlerter implements Alerter {
         }
         logger.debug("alertOnFirstError");
         String title = String.format("Execution %s has encountered a failure", executableFlow.getExecutionId());
-        String link = String.format("%s/executor?execid=%s", this.urlPrefix, executableFlow.getExecutionId());
-        String content = String.format("[%s](%s)\n" +
-                                    "projectName: %s\n" +
-                                    "flowId: %s\n" +
-                                    "executionId: %s\n" +
-                                    "startTime: %s\n" +
-                                    "endTime: %s\n" +
-                                    "duration: %s\n" +
-                                    "status: %s\n\n",
-                link, link,
-                executableFlow.getProjectName(),
-                executableFlow.getFlowId(),
-                executableFlow.getExecutionId(),
-                TimeUtils.formatDateTimeZone(executableFlow.getStartTime()),
-                TimeUtils.formatDateTimeZone(executableFlow.getEndTime()),
-                TimeUtils.formatDuration(executableFlow.getStartTime(), executableFlow.getEndTime()),
-                executableFlow.getStatus()
-        );
-
+        String content = renderContent(executableFlow);
         String message = renderMessage(title, content);
-        sendMessage(message, getWebhookUrl(executableFlow.getProjectName()));
+        sendMessage(message, getUrl(executableFlow.getProjectName()));
     }
 
     private String getJobOrFlowName(final SlaOption slaOption) {
@@ -256,14 +278,15 @@ public class FeishuAlerter implements Alerter {
     }
 
     @Override
-    public void alertOnSla(SlaOption slaOption, String slaMessage) throws Exception {
+    public void alertOnSla(SlaOption slaOption, ExecutableFlow executableFlow) throws Exception {
         if (!this.enabled) {
             logger.info("alertOnSla disabled");
             return;
         }
         logger.debug("alertOnSla");
-        String title = String.format("SLA violation for %s", getJobOrFlowName(slaOption));
-        String message = renderMessage(title, slaMessage);
+        String title = String.format("SLA violation for execution %s", executableFlow.getExecutionId());
+        String content = renderContent(executableFlow, slaOption);
+        String message = renderMessage(title, content);
         sendMessage(message);
     }
 

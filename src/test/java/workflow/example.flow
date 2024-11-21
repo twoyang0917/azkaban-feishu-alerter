@@ -1,0 +1,31 @@
+nodes:
+  - name: job_start
+    type: noop
+
+  - name: job_success
+    type: command
+    config:
+      command: echo "success"
+    dependsOn:
+      - job_start
+
+  - name: job_fail
+    type: command
+    config:
+      command: exit -1
+    dependsOn:
+      - job_start
+
+  - name: job_sleep
+    type: command
+    config:
+      command: sleep 90
+    dependsOn:
+      - job_start
+
+  - name: job_timeout
+    type: command
+    config:
+      command: exit -1
+    dependsOn:
+      - job_sleep

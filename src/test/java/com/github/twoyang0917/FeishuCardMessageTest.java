@@ -19,19 +19,8 @@ public class FeishuCardMessageTest {
               "card": {
                 "elements": [
                   {
-                    "tag": "div",
-                    "text": {
-                      "content": "链接",
-                      "tag": "lark_md"
-                    }
-                  },
-                  {"tag": "hr"},
-                  {
-                    "tag": "div",
-                    "text": {
-                      "content": "内容",
-                      "tag": "lark_md"
-                    }
+                    "tag": "markdown",
+                    "content": "内容"
                   }
                 ],
                 "header": {
@@ -46,13 +35,17 @@ public class FeishuCardMessageTest {
             }
         */
         // https://jsontostring.com/
-        String jsonTemplate = "{\"msg_type\":\"interactive\",\"card\":{\"elements\":[{\"tag\":\"div\",\"text\":{\"content\":\"链接\",\"tag\":\"lark_md\"}},{\"tag\":\"hr\"},{\"tag\":\"div\",\"text\":{\"content\":\"内容\",\"tag\":\"lark_md\"}}],\"header\":{\"template\":\"red\",\"title\":{\"content\":\"标题\",\"tag\":\"plain_text\"}},\"config\":{\"wide_screen_mode\":true}}}";
+        String jsonTemplate = "{\"msg_type\":\"interactive\",\"card\":{\"elements\":[{\"tag\":\"markdown\",\"content\":\"内容\"}],\"header\":{\"template\":\"red\",\"title\":{\"content\":\"标题\",\"tag\":\"plain_text\"}},\"config\":{\"wide_screen_mode\":true}}}";
 
         // Parse JSON template into JsonObject using Gson
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         JsonObject jsonObject = gson.fromJson(jsonTemplate, JsonObject.class);
 
         // Modify content in header based on your dynamic needs
+        jsonObject.getAsJsonObject("card")
+                .getAsJsonObject("header")
+                .addProperty("template", "green");
+
         jsonObject.getAsJsonObject("card")
                 .getAsJsonObject("header")
                 .getAsJsonObject("title")
@@ -62,14 +55,7 @@ public class FeishuCardMessageTest {
         jsonObject.getAsJsonObject("card")
                 .getAsJsonArray("elements")
                 .get(0).getAsJsonObject()
-                .getAsJsonObject("text")
-                .addProperty("content", "https://azkaban.example.com");
-
-        jsonObject.getAsJsonObject("card")
-                .getAsJsonArray("elements")
-                .get(2).getAsJsonObject()
-                .getAsJsonObject("text")
-                .addProperty("content", "内容信息");
+                .addProperty("content", "[https://azkaban.example.com](https://azkaban.example.com)\n<at email=twoyang@example.com></at>");
 
         // Convert JsonObject back to JSON string
         String json = gson.toJson(jsonObject);

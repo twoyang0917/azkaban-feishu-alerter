@@ -27,28 +27,48 @@ $ vim conf/plugin.properties
 alerter.name=azkaban-feishu-alerter
 alerter.class=com.github.twoyang0917.FeishuAlerter
 
+# 告警信息中的链接地址前缀
+azkaban.urlPrefix=https://your-azkaban-url
 # 是否禁用飞书告警，比如测试集群就不需要告警
 feishu.enabled=true
 # 成功是否发送飞书告警，正常情况下成功是不需要的
 feishu.alertSuccess=false
-# 飞书机器人的 Webhook URL
+# 默认的webhook地址
 feishu.defaultWebhookUrl=https://open.feishu.cn/open-apis/bot/v2/hook/******
-# 告警规则名称，多个规则用逗号隔开，根据projectName匹配正则表达式，发送告警到对应的webhook地址，如果所有规则都不匹配则使用默认的webhook地址
-rule.names=ai,das
+# 默认的告警通知人
+feishu.defaultNotifyPersons=twoyang@example.com,tiger@example.com
+
+# 告警频道规则，根据projectName匹配正则表达式，发送告警到对应的webhook地址，如果所有规则都不匹配则使用默认的webhook地址
+# 多个规则用逗号隔开，根据name中先后顺序加载规则。正则匹配时是优先匹配到即命中，所以多个规则的顺序要正确。
+rule.webhook.name=ai,das
 # 告警规则对应正则表达式
-rule.ai.regex=.*[-_]ai[-_].*
+rule.webhook.ai.regex=.*ai[-_].*
 # 告警规则对应的webhook地址
-rule.ai.webhookUrl=https://open.feishu.cn/open-apis/bot/v2/hook/******
-rule.das.regex=^DAS_.*
-rule.das.webhookUrl=https://open.feishu.cn/open-apis/bot/v2/hook/******
-# 告警信息中的链接地址前缀
-azkaban.urlPrefix=https://your-azkaban-url
+rule.webhook.ai.url=https://open.feishu.cn/open-apis/bot/v2/hook/******
+rule.webhook.das.regex=^DAS_.*
+rule.webhook.das.url=https://open.feishu.cn/open-apis/bot/v2/hook/******
+
+# 告警通知人规则，根据projectName匹配正则表达式，发送告警到对应的飞书通知人，如果所有规则都不匹配则使用默认的通知人
+# 多个规则用逗号隔开，根据name中先后顺序加载规则。正则匹配时是优先匹配到即命中，所以多个规则的顺序要正确。
+# 如果希望没有通知人，可以置空。
+rule.notify.name=clued,ai,mainland
+rule.notify.mainland.regex=.*mainland.*
+rule.notify.mainland.persons=twoyang@example.com,tiger@example.com
+rule.notify.clued.regex=^prod-clued.*
+rule.notify.clued.persons=twoyang@example.com,fox@example.com
+rule.notify.ai.regex=.*ai[-_].*
+rule.notify.ai.persons=
 ```
 
 ## 说明
 - 因为我的线上azkaban版本是3.74.3，所以我的代码都是基于这个版本的。如果你的版本接口有变化，只能参考这个来修改，不能直接使用。
 - 如果要使用飞书告警，需要在flow的属性中设置alert.type为azkaban-feishu-alerter，当前仅支持在UI中设置，不支持在调度选项中设置。
 - 但实际需求往往是用飞书告警来替换邮件告警，这个需要修改azkaban源码，所以我修改了azkaban源码，添加了多告警支持，并可关闭邮件告警。
+```shell
+# 关闭邮件告警, 要修改主配置文件
+$ vim conf/azkaban.properties
+mail.enabled=false
+```
 
 ## azkaban源码修改
 - 详情见[我的fork](https://github.com/azkaban/azkaban/compare/3.74.3...twoyang0917:azkaban:multi_alerter)
