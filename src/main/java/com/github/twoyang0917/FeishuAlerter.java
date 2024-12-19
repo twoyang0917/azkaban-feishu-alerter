@@ -229,9 +229,18 @@ public class FeishuAlerter implements Alerter {
         return content.toString();
     }
 
+    /*
+    * 通过web页面配置Flow Parameters中的alert参数也可以控制是否发送报警
+    * 此函数用来获取alert参数
+    */
+    private boolean isFlowAlertOn(ExecutableFlow executableFlow) {
+        String alert = executableFlow.getExecutionOptions().getFlowParameters().getOrDefault("alert", "true");
+        return Boolean.parseBoolean(alert);
+    }
+
     @Override
     public void alertOnSuccess(ExecutableFlow executableFlow) throws Exception {
-        if (!this.enabled || !this.alertSuccess) {
+        if (!this.alertSuccess || !this.enabled || !isFlowAlertOn(executableFlow)) {
             logger.info("alertOnSuccess disabled");
             return;
         }
@@ -245,7 +254,7 @@ public class FeishuAlerter implements Alerter {
 
     @Override
     public void alertOnError(ExecutableFlow executableFlow, String... extraReasons) {
-        if (!this.enabled) {
+        if (!this.enabled || !isFlowAlertOn(executableFlow)) {
             logger.info("alertOnError disabled");
             return;
         }
@@ -258,7 +267,7 @@ public class FeishuAlerter implements Alerter {
 
     @Override
     public void alertOnFirstError(ExecutableFlow executableFlow) throws Exception {
-        if (!this.enabled) {
+        if (!this.enabled || !isFlowAlertOn(executableFlow)) {
             logger.info("alertOnFirstError disabled");
             return;
         }
@@ -279,7 +288,7 @@ public class FeishuAlerter implements Alerter {
 
     @Override
     public void alertOnSla(SlaOption slaOption, ExecutableFlow executableFlow) throws Exception {
-        if (!this.enabled) {
+        if (!this.enabled || !isFlowAlertOn(executableFlow)) {
             logger.info("alertOnSla disabled");
             return;
         }
